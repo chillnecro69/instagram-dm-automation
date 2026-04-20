@@ -1,0 +1,228 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Users and Authentication
+model User {
+  id                String    @id @default(cuid())
+  email             String    @unique
+  phone             String?
+  name              String?
+  image             String?
+  emailVerified     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  planType          String    @default("free") // 'free', 'pro', 'enterprise'
+  planExpiresAt     DateTime?
+  usageResetAt      DateTime  @default(now())
+  monthlyDmCount    Int       @default(0)
+  monthlyDmLimit    Int       @default(100)
+
+  // Relations
+  accounts          Account[]
+  sessions          Session[]
+  instagramAccounts InstagramAccount[]
+  automations       Automation[]
+  subscriptions     Subscription[]
+
+  @@map("users")
+}
+
+// NextAuth Account model
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// NextAuth Session model
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// NextAuth Verification Token
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// Instagram Account Connection
+model InstagramAccount {
+  id                   String    @id @default(cuid())
+  userId               String
+  instagramUserId      String    @unique
+  username             String
+  name                 String?
+  profilePictureUrl    String?
+  followerCount        Int?
+  isBusinessAccount    Boolean   @default(false)
+  accessToken          String    @db.Text // encrypted
+  tokenExpiresAt       DateTime?
+  isActive             Boolean   @default(true)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relations
+  user              User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automations       Automation[]
+  webhookEvents     WebhookEvent[]
+
+  @@index([userId])
+  @@index([instagramUserId])
+  @@map("instagram_accounts")
+}
+
+// Automation Definitions
+model Automation {
+  id                  String   @id @default(cuid())
+  userId              String
+  instagramAccountId  String
+  name                String
+  isActive            Boolean  @default(true)
+  triggerType         String   // 'comment', 'story_reply', 'dm', 'follow'
+  keywords            String[] // Array of trigger keywords
+  targetPostId        String?  // Specific post/reel ID (optional)
+  responseType        String   // 'text', 'link', 'lead_capture', 'multi_step'
+  responseData        Json     // Flexible response configuration
+  conditions          Json?    // Follower requirements, timing, etc.
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relations
+  user              User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  instagramAccount  InstagramAccount         @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  responseTemplates ResponseTemplate[]
+  executions        AutomationExecution[]
+  capturedLeads     CapturedLead[]
+
+  @@index([userId])
+  @@index([isActive])
+  @@map("automations")
+}
+
+// Response Templates
+model ResponseTemplate {
+  id              String @id @default(cuid())
+  automationId    String
+  stepOrder       Int    @default(1)
+  messageText     String?
+  includesLink    Boolean @default(false)
+  linkUrl         String?
+  linkPreviewText String?
+  collectEmail    Boolean @default(false)
+  collectPhone    Boolean @default(false)
+  delaySeconds    Int     @default(0)
+  conditions      Json?   // When to send this template
+
+  // Relations
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@map("response_templates")
+}
+
+// Automation Executions (Analytics)
+model AutomationExecution {
+  id               String   @id @default(cuid())
+  automationId     String
+  instagramUserId  String
+  instagramUsername String?
+  triggerContent   String?  // Original comment/message
+  responseSent     String?  // What we sent back
+  executionStatus  String   // 'success', 'failed', 'rate_limited', 'blocked'
+  failureReason    String?
+  createdAt        DateTime @default(now())
+
+  // Relations
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@index([createdAt])
+  @@map("automation_executions")
+}
+
+// User Interactions (Lead Capture)
+model CapturedLead {
+  id                String   @id @default(cuid())
+  automationId      String
+  instagramUserId   String
+  instagramUsername String?
+  email             String?
+  phone             String?
+  customFields      Json?
+  sourcePostId      String?
+  createdAt         DateTime @default(now())
+
+  // Relations
+  automation Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+
+  @@index([automationId])
+  @@map("captured_leads")
+}
+
+// Subscription & Billing
+model Subscription {
+  id                     String    @id @default(cuid())
+  userId                 String
+  planType               String
+  status                 String    // 'active', 'cancelled', 'past_due'
+  currentPeriodStart     DateTime?
+  currentPeriodEnd       DateTime?
+  razorpaySubscriptionId String?
+  stripeSubscriptionId   String?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscriptions")
+}
+
+// Webhook Events (for debugging)
+model WebhookEvent {
+  id                 String           @id @default(cuid())
+  instagramAccountId String
+  eventType          String
+  rawPayload         Json
+  processed          Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+
+  // Relations
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+
+  @@index([processed])
+  @@map("webhook_events")
+}
