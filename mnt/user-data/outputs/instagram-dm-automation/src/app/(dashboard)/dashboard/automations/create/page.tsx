@@ -10,7 +10,7 @@ import {
   Instagram,
   Zap,
   Users,
-  Link,
+  Link as LinkIcon,
   FileText,
   Mail,
   Phone,
@@ -338,7 +338,7 @@ export default function CreateAutomationPage() {
                       id: 'link', 
                       name: 'Link Sharing', 
                       description: 'Send a link with preview',
-                      icon: Link 
+                      icon: LinkIcon 
                     },
                     { 
                       id: 'lead_capture', 
@@ -380,7 +380,7 @@ export default function CreateAutomationPage() {
                   onChange={(e) => updateResponseData('message', e.target.value)}
                 />
                 <p className="text-sm text-muted-foreground mt-1">
-                  Use {{'{'}username{'}'}} to personalize with their Instagram username
+                  Use {"{{username}}"} to personalize with their Instagram username
                 </p>
               </div>
 
